@@ -359,6 +359,9 @@ function AppContent() {
     if (window.innerWidth < 768) setScale(0.7);
   }, []);
 
+  // Use ref to track if an animation frame is pending (for throttling drag)
+  const rafRef = useRef(null);
+
   const handleWheel = (e) => {
     if (e.ctrlKey) {
       e.preventDefault();
@@ -375,12 +378,28 @@ function AppContent() {
 
   const handleMouseMove = (e) => {
     if (isDragging) {
-      e.preventDefault();
-      setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+      e.preventDefault(); 
+      
+      // Cancel any pending animation frame
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      
+      // Schedule position update for next frame
+      rafRef.current = requestAnimationFrame(() => {
+        setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+      });
     }
   };
 
-  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    // Cancel any pending animation frame on release
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
 
   const handleTouchStart = (e) => {
     setIsDragging(true);
@@ -391,12 +410,28 @@ function AppContent() {
   const handleTouchMove = (e) => {
     if (isDragging) {
       e.preventDefault(); 
-      const touch = e.touches[0];
-      setPosition({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y });
+      
+      // Cancel any pending animation frame
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      
+      // Schedule position update for next frame
+      rafRef.current = requestAnimationFrame(() => {
+        const touch = e.touches[0];
+        setPosition({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y });
+      });
     }
   };
 
-  const handleTouchEnd = () => setIsDragging(false);
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    // Cancel any pending animation frame on release
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
 
   // Admin Mode Handlers
   const handleAdminToggle = () => {
