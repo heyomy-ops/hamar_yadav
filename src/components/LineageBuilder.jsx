@@ -15,7 +15,7 @@ const SelectGotraStep = ({ onSelect }) => (
     <div className="flex items-center gap-3 mb-4">
        <div className="bg-slate-100 p-2 rounded-full"><Users size={24} className="text-slate-700"/></div>
        <div>
-         <h2 className="text-2xl font-bold text-slate-800">Identify Clan</h2>
+         <h2 className="text-2xl font-bold text-slate-800">Identify Gotra</h2>
          <p className="text-slate-500 text-xs uppercase tracking-wider font-semibold">Step 1 of 4</p>
        </div>
     </div>
@@ -54,7 +54,7 @@ const FindFatherStep = ({
       <div className="flex justify-between items-start mb-4">
         <div>
            <h2 className="text-2xl font-bold text-slate-800">Who is the Head?</h2>
-           <p className="text-slate-500 text-sm">Searching in <strong style={{color: GOTRA_COLORS[selectedGotra]}}>{selectedGotra}</strong> Clan</p>
+           <p className="text-slate-500 text-sm">Searching in <strong style={{color: GOTRA_COLORS[selectedGotra]}}>{selectedGotra}</strong> Gotra</p>
         </div>
         <button onClick={onBack} className="text-xs font-bold text-slate-400 hover:text-slate-600 bg-slate-100 px-2 py-1 rounded">CHANGE</button>
       </div>
@@ -167,7 +167,7 @@ const AddMotherStep = ({ father, motherName, setMotherName, motherMaidenGotra, s
                         >
                         <option value="">Select Gotra...</option>
                         {gotraList.filter(g => g !== selectedGotra).map(g => (<option key={g} value={g}>{g}</option>))}
-                        <option value="ADD_NEW" className="font-bold text-indigo-600">+ Add New Clan</option>
+                        <option value="ADD_NEW" className="font-bold text-indigo-600">+ Add New Gotra</option>
                         </select>
                     </div>
                 ) : (
@@ -176,7 +176,7 @@ const AddMotherStep = ({ father, motherName, setMotherName, motherMaidenGotra, s
                             type="text" 
                             value={newGotra} 
                             onChange={(e) => setNewGotra(capitalizeName(e.target.value))}
-                            placeholder="Enter Clan Name"
+                            placeholder="Enter Gotra Name"
                             className="flex-1 p-2.5 rounded-lg border border-indigo-300 bg-white text-slate-800 font-medium text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                         />
@@ -1102,15 +1102,15 @@ export default function LineageBuilder({ onClose }) {
         <X size={24} />
       </button>
 
-      <div className="relative z-10 w-full h-full overflow-y-auto flex flex-col items-center pt-12 pb-24 px-4 pointer-events-none">
+      <div className="relative z-10 w-full h-full overflow-y-auto flex flex-col items-center pt-24 md:pt-12 pb-24 px-4 pointer-events-none">
         
-        <div className="mb-8 flex items-center gap-3 bg-slate-900/80 backdrop-blur-md px-5 py-2.5 rounded-full border border-slate-700 shadow-xl pointer-events-auto">
-           <Activity className="text-blue-500" size={18} />
-           <span className="font-bold text-slate-100 tracking-wide">CLAN MAP</span>
-           <div className="h-4 w-px bg-slate-700 mx-1"></div>
-           <span className="text-slate-400 text-xs font-mono">{safeDatabase.length} NODES LINKED</span>
-           <div className="h-4 w-px bg-slate-700 mx-1"></div>
-           <span className="text-emerald-400 text-xs font-bold uppercase">{selectedGotra}</span>
+        <div className="mb-8 flex items-center gap-2 md:gap-3 bg-slate-900/80 backdrop-blur-md px-3 md:px-5 py-2 md:py-2.5 rounded-full border border-slate-700 shadow-xl pointer-events-auto">
+           <Activity className="text-blue-500" size={16} />
+           <span className="font-bold text-slate-100 tracking-wide text-xs md:text-sm">GOTRA MAP</span>
+           <div className="h-4 w-px bg-slate-700 mx-0.5 md:mx-1"></div>
+           <span className="text-slate-400 text-[10px] md:text-xs font-mono">{safeDatabase.length} NODES</span>
+           <div className="h-4 w-px bg-slate-700 mx-0.5 md:mx-1 hidden sm:block"></div>
+           <span className="text-emerald-400 text-[10px] md:text-xs font-bold uppercase hidden sm:inline">{selectedGotra}</span>
         </div>
 
         <div className="pointer-events-auto w-full max-w-md">

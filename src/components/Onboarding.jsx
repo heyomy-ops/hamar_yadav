@@ -94,7 +94,7 @@ export default function Onboarding() {
               <div className="w-16 h-16 bg-rose-100 rounded-2xl mx-auto flex items-center justify-center text-rose-600 mb-4">
                 <Users size={32} />
               </div>
-              <h1 className="text-2xl font-bold text-slate-800">Select your Clan (Gotra)</h1>
+              <h1 className="text-2xl font-bold text-slate-800">Select your Gotra</h1>
               <p className="text-slate-500">Find your lineage or add a new one.</p>
             </div>
 

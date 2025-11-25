@@ -150,7 +150,7 @@ import LoginPage from './components/LoginPage';
 import Onboarding from './components/Onboarding';
 
 // --- Sidebar Component ---
-const Sidebar = ({ isOpen, onClose, activeView, onViewChange, onReset, isAdminMode, onAdminToggle, user, onLogin, onLogout }) => (
+const Sidebar = ({ isOpen, onClose, activeView, onViewChange, isAdminMode, onAdminToggle, user, onLogin, onLogout }) => (
   <AnimatePresence>
     {isOpen && (
       <>
@@ -238,7 +238,7 @@ const Sidebar = ({ isOpen, onClose, activeView, onViewChange, onReset, isAdminMo
                 <Activity size={20} />
               </div>
               <div className="text-left">
-                <div className="font-bold text-sm">Clan Map</div>
+                <div className="font-bold text-sm">Gotra Map</div>
                 <div className="text-xs opacity-70">Lineage Builder</div>
               </div>
             </button>
@@ -270,18 +270,6 @@ const Sidebar = ({ isOpen, onClose, activeView, onViewChange, onReset, isAdminMo
               </div>
             </button>
             
-            <button 
-              onClick={onReset}
-              className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 hover:bg-red-50 hover:border-red-100 hover:text-red-600 transition-colors group"
-            >
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center text-slate-500 font-bold group-hover:from-red-100 group-hover:to-red-200 group-hover:text-red-500">
-                R
-              </div>
-              <div className="text-left">
-                <div className="text-sm font-bold text-slate-700 group-hover:text-red-700">Reset Data</div>
-                <div className="text-xs text-slate-400 group-hover:text-red-400">Clear Local Storage</div>
-              </div>
-            </button>
           </div>
         </motion.div>
       </>
@@ -455,14 +443,8 @@ function AppContent() {
         onClose={() => setIsSidebarOpen(false)} 
         activeView={activeView}
         onViewChange={setActiveView}
-        onReset={() => {
-          if(confirm('Are you sure you want to reset all data? This cannot be undone.')) {
-            resetData();
-            setIsSidebarOpen(false);
-          }
-        }}
         isAdminMode={isAdminMode}
-        onAdminToggle={handleAdminToggle}
+        onAdminToggle={() => setShowPasswordModal(true)}
         user={user}
         onLogin={loginWithGoogle}
         onLogout={logout}
@@ -503,7 +485,7 @@ function AppContent() {
                 <Layout size={20} />
                 </div>
                 <div className="text-left">
-                <h1 className="text-sm font-bold text-slate-800 tracking-tight leading-none">{selectedGotra || 'Select Clan'}</h1>
+                <h1 className="text-sm font-bold text-slate-800 tracking-tight leading-none">{selectedGotra || 'Select Gotra'}</h1>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Change Lineage</p>
                 </div>
             </button>
@@ -524,7 +506,7 @@ function AppContent() {
                             <div className="p-2 border-b border-slate-50">
                                 <input 
                                     type="text" 
-                                    placeholder="Search Clan..." 
+                                    placeholder="Search Gotra..." 
                                     value={gotraSearchQuery}
                                     onChange={(e) => setGotraSearchQuery(e.target.value)}
                                     autoFocus
@@ -632,17 +614,20 @@ function AppContent() {
             {familyData ? (
               <TreeNode node={familyData} onTagClick={handleTagClick} isAdminMode={isAdminMode} highlightedId={highlightedId} />
             ) : (
-              <div className="flex flex-col items-center justify-center text-center p-10 bg-white/50 backdrop-blur-sm rounded-3xl border border-white/60 shadow-xl">
-                <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-6 text-indigo-600">
-                   <Activity size={40} />
+              <div className="flex flex-col items-center justify-center text-center p-6 md:p-10 bg-white/50 backdrop-blur-sm rounded-2xl md:rounded-3xl border border-white/60 shadow-xl max-w-sm mx-auto">
+                <div className="w-16 h-16 md:w-20 md:h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-4 md:mb-6 text-indigo-600">
+                   <Activity size={32} className="md:hidden" />
+                   <Activity size={40} className="hidden md:block" />
                 </div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Start Your Lineage</h2>
-                <p className="text-slate-500 max-w-xs mb-8">Your family tree is currently empty. Use the Clan Map to add the first member.</p>
+                <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-2">Start Your Lineage</h2>
+                <p className="text-sm md:text-base text-slate-500 max-w-xs mb-6 md:mb-8 px-2">Your family tree is currently empty. Use the Gotra Map to add the first member.</p>
                 <button 
                   onClick={() => setActiveView('builder')}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 md:px-8 md:py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 text-sm md:text-base w-full md:w-auto justify-center"
                 >
-                  <Plus size={20} /> Open Clan Map
+                  <Plus size={18} className="md:hidden" />
+                  <Plus size={20} className="hidden md:block" />
+                  Open Gotra Map
                 </button>
               </div>
             )}
