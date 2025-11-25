@@ -270,6 +270,7 @@ const Sidebar = ({ isOpen, onClose, activeView, onViewChange, isAdminMode, onAdm
               </div>
             </button>
             
+
           </div>
         </motion.div>
       </>
@@ -444,7 +445,7 @@ function AppContent() {
         activeView={activeView}
         onViewChange={setActiveView}
         isAdminMode={isAdminMode}
-        onAdminToggle={() => setShowPasswordModal(true)}
+        onAdminToggle={handleAdminToggle}
         user={user}
         onLogin={loginWithGoogle}
         onLogout={logout}
