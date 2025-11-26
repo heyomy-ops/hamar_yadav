@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Activity, Heart, Info, Plus, Trash2, Users, CheckCircle2, RefreshCw, X, User } from 'lucide-react';
+import { Search, Activity, Heart, Info, Plus, Trash2, Users, CheckCircle2, RefreshCw, X, User, Layout } from 'lucide-react';
 import { useFamily } from '../context/FamilyContext';
 import { GOTRA_LIST, GOTRA_COLORS } from '../constants/gotras';
 import { capitalizeName } from '../utils/textUtils';
+import { updateDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 // --- Constants imported from shared file ---
 
@@ -117,9 +119,10 @@ const FindFatherStep = ({
   );
 };
 
-const AddMotherStep = ({ father, motherName, setMotherName, motherMaidenGotra, setMotherMaidenGotra, selectedGotra, onContinue, gotraList, onAddGotra }) => {
+const AddMotherStep = ({ father, motherName, setMotherName, motherMaidenGotra, setMotherMaidenGotra, selectedGotra, onContinue, gotraList, onAddGotra, database }) => {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newGotra, setNewGotra] = useState('');
+  const [confirmedMatchId, setConfirmedMatchId] = useState(null);
 
   const handleAddNew = async () => {
      if(newGotra.trim()) {
@@ -127,6 +130,41 @@ const AddMotherStep = ({ father, motherName, setMotherName, motherMaidenGotra, s
          setMotherMaidenGotra(newGotra.trim());
          setIsAddingNew(false);
      }
+  };
+
+  // Find potential match for mother/wife
+  const findMotherMatch = (name) => {
+    if (!name || name.length < 2 || !database) return null;
+    return database.find(p => 
+      p.gender === 'female' &&
+      p.name.toLowerCase() === name.toLowerCase() &&
+      !p.spouseId // Not already married
+    );
+  };
+
+  // Get father name helper
+  const getFatherName = (person) => {
+    if (!person || !person.fatherId) return null;
+    const fatherPerson = database.find(p => p.id === person.fatherId);
+    return fatherPerson ? fatherPerson.name : null;
+  };
+
+  const match = findMotherMatch(motherName);
+  const fatherName = match ? getFatherName(match) : null;
+  const isLinked = confirmedMatchId === match?.id;
+
+  // Handle confirming match
+  const handleConfirmMatch = () => {
+    if (match) {
+      setConfirmedMatchId(match.id);
+      setMotherMaidenGotra(match.birthGotra); // Auto-fill her maiden Gotra
+    }
+  };
+
+  // Handle rejecting match
+  const handleRejectMatch = () => {
+    setConfirmedMatchId(null);
+    setMotherMaidenGotra(null);
   };
 
   return (
@@ -141,7 +179,61 @@ const AddMotherStep = ({ father, motherName, setMotherName, motherMaidenGotra, s
     <div className="space-y-4">
       <div>
         <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Wife's Name</label>
-        <input type="text" autoFocus value={motherName} onChange={(e) => setMotherName(capitalizeName(e.target.value))} className="w-full p-3 mt-1 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all" placeholder="Enter name..." />
+        <input 
+          type="text" 
+          autoFocus 
+          value={motherName} 
+          onChange={(e) => {
+            setMotherName(capitalizeName(e.target.value));
+            setConfirmedMatchId(null); // Reset confirmation when name changes
+          }}
+          disabled={isLinked}
+          className={`w-full p-3 mt-1 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all ${isLinked ? 'bg-emerald-50 border-emerald-200' : ''}`}
+          placeholder="Enter name..." 
+        />
+        
+        {/* Match Indicator with Yes/No buttons */}
+        {match && !isLinked && (
+          <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl animate-in slide-in-from-top-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <span className="text-xs font-bold text-indigo-800 uppercase tracking-wide">Found Match!</span>
+                {fatherName && (
+                  <p className="text-sm text-slate-700 mt-1">
+                    Daughter of <strong>{fatherName}</strong>
+                  </p>
+                )}
+                {!fatherName && (
+                  <p className="text-sm text-slate-700 mt-1">
+                    From <strong>{match.birthGotra}</strong> Gotra
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleConfirmMatch}
+                className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap"
+              >
+                Yes, Link
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Linked State */}
+        {isLinked && (
+          <div className="mt-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-600" />
+              <span className="text-sm font-bold text-emerald-700">Linked to existing record</span>
+            </div>
+            <button 
+              onClick={handleRejectMatch}
+              className="text-xs text-slate-500 hover:text-red-600 font-bold"
+            >
+              Unlink
+            </button>
+          </div>
+        )}
       </div>
       
       <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
@@ -155,7 +247,8 @@ const AddMotherStep = ({ father, motherName, setMotherName, motherMaidenGotra, s
                     <div className="space-y-2">
                         <select 
                         value={motherMaidenGotra || ''}
-                        className="w-full p-2.5 rounded-lg border border-amber-200 bg-white text-slate-800 font-medium text-sm outline-none focus:border-amber-400" 
+                        disabled={isLinked}
+                        className={`w-full p-2.5 rounded-lg border bg-white text-slate-800 font-medium text-sm outline-none focus:border-amber-400 ${isLinked ? 'bg-emerald-50 border-emerald-200' : 'border-amber-200'}`}
                         onChange={(e) => {
                             if(e.target.value === 'ADD_NEW') {
                                 setIsAddingNew(true);
@@ -167,7 +260,7 @@ const AddMotherStep = ({ father, motherName, setMotherName, motherMaidenGotra, s
                         >
                         <option value="">Select Gotra...</option>
                         {gotraList.filter(g => g !== selectedGotra).map(g => (<option key={g} value={g}>{g}</option>))}
-                        <option value="ADD_NEW" className="font-bold text-indigo-600">+ Add New Gotra</option>
+                        {!isLinked && <option value="ADD_NEW" className="font-bold text-indigo-600">+ Add New Gotra</option>}
                         </select>
                     </div>
                 ) : (
@@ -610,206 +703,82 @@ const LinkFatherStep = ({ newFatherName, database, selectedGotra, onLink, onReve
 };
 
 export default function LineageBuilder({ onClose }) {
-  const { database, addPerson, updatePerson, selectedGotra, loading, gotraList, addNewGotra } = useFamily();
+  const { database, addPerson, updatePerson, selectedGotra, loading, gotraList, addNewGotra, user, userProfile } = useFamily();
+  
+  // ALL HOOKS MUST BE AT THE TOP - Before any conditional returns!
   const safeDatabase = Array.isArray(database) ? database : [];
   
   // Start directly at find-father since Gotra is global
   const [step, setStep] = useState('find-father');
-  
-  // Data State
   const [father, setFather] = useState(null);
-  const [newFatherName, setNewFatherName] = useState(''); // Temp store for new father name
-  const [existingMother, setExistingMother] = useState(null); 
   const [motherName, setMotherName] = useState('');
   const [motherMaidenGotra, setMotherMaidenGotra] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  
   const [childrenList, setChildrenList] = useState([{ name: '', gender: null }]);
-  const [existingChildren, setExistingChildren] = useState([]); 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [existingMother, setExistingMother] = useState(null);
+  const [existingChildren, setExistingChildren] = useState([]);
+  const [error, setError] = useState(null);
   const [lastAddedChildren, setLastAddedChildren] = useState([]);
-  const [error, setError] = useState(null); // Add error state
+  const [newFatherName, setNewFatherName] = useState('');
   const [headToChange, setHeadToChange] = useState(null); // Track when changing head
-
-  // Simulation State
-  const canvasRef = useRef(null);
-  const nodesRef = useRef([]);
   
-  // Initialize Simulation Nodes when DB changes
-  useEffect(() => {
-    const existingIds = new Set(nodesRef.current.map(n => n.id));
-    
-    const newNodes = safeDatabase.filter(p => !existingIds.has(p.id)).map(p => {
-       const fatherNode = nodesRef.current.find(n => n.id === p.fatherId);
-       const startX = fatherNode ? fatherNode.x + (Math.random() - 0.5) * 50 : Math.random() * window.innerWidth;
-       const startY = fatherNode ? fatherNode.y + (Math.random() - 0.5) * 50 : Math.random() * window.innerHeight;
+  // NOW conditional return is safe - ALL hooks already called
+  if (!selectedGotra) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-6 right-6 z-50 p-2 bg-slate-800/50 hover:bg-slate-800 text-slate-400 hover:text-white rounded-full transition-all backdrop-blur-sm border border-slate-700"
+        >
+          <X size={24} />
+        </button>
 
-       return {
-         ...p,
-         x: startX,
-         y: startY,
-         vx: 0,
-         vy: 0,
-         radius: p.generation === 1 ? 8 : p.generation === 2 ? 6 : 4
-       };
-    });
+        {/* Empty State */}
+        <div className="relative z-10 w-full h-full flex flex-col items-center justify-center px-4">
+          <div className="flex flex-col items-center justify-center text-center p-6 md:p-10 bg-slate-800/50 backdrop-blur-sm rounded-2xl md:rounded-3xl border border-slate-700 shadow-xl max-w-sm">
+            <div className="w-16 h-16 md:w-20 md:h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-4 md:mb-6 text-indigo-600">
+              <Layout size={32} className="md:hidden" />
+              <Layout size={40} className="hidden md:block" />
+            </div>
+            <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Select Your Gotra</h2>
+            <p className="text-sm md:text-base text-slate-300 max-w-xs mb-6 md:mb-8 px-2">Choose a Gotra from the top-left dropdown to start building your family tree.</p>
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span>👆</span>
+              <span>Click the Gotra selector above</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-    nodesRef.current = [...nodesRef.current, ...newNodes];
-  }, [safeDatabase]);
-
-  // Physics Loop
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationFrameId;
-    let time = 0;
-
-    const gotraCenters = {};
-    GOTRA_LIST.forEach((g, i) => {
-        const angle = (i / GOTRA_LIST.length) * Math.PI * 2;
-        const radius = Math.min(canvas.width, canvas.height) * 0.35;
-        gotraCenters[g] = {
-            x: canvas.width / 2 + Math.cos(angle) * radius,
-            y: canvas.height / 2 + Math.sin(angle) * radius
-        };
-    });
-
-    const render = () => {
-      time += 0.01;
-      if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        GOTRA_LIST.forEach((g, i) => {
-            const angle = (i / GOTRA_LIST.length) * Math.PI * 2;
-            const radius = Math.min(canvas.width, canvas.height) * 0.35;
-            gotraCenters[g] = {
-                x: canvas.width / 2 + Math.cos(angle) * radius,
-                y: canvas.height / 2 + Math.sin(angle) * radius
-            };
-        });
-      }
-
-      ctx.fillStyle = '#0f172a'; 
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      Object.entries(gotraCenters).forEach(([g, pos]) => {
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y, 40, 0, Math.PI * 2);
-          ctx.fillStyle = GOTRA_COLORS[g];
-          ctx.globalAlpha = 0.05;
-          ctx.fill();
-          ctx.globalAlpha = 1;
-          
-          ctx.fillStyle = GOTRA_COLORS[g];
-          ctx.font = "bold 10px sans-serif";
-          ctx.textAlign = "center";
-          ctx.globalAlpha = 0.5;
-          ctx.fillText(g, pos.x, pos.y + 60);
-          ctx.globalAlpha = 1;
-      });
-
-      nodesRef.current.forEach(node => {
-          const center = gotraCenters[node.birthGotra] || {x: canvas.width/2, y: canvas.height/2};
-          const dx = center.x - node.x;
-          const dy = center.y - node.y;
-          node.vx += dx * 0.005; 
-          node.vy += dy * 0.005;
-
-          nodesRef.current.forEach(other => {
-              if (node.id === other.id) return;
-              const distDx = node.x - other.x;
-              const distDy = node.y - other.y;
-              const dist = Math.sqrt(distDx*distDx + distDy*distDy);
-              const minDist = 30;
-              if (dist < minDist) {
-                  const force = (minDist - dist) / dist;
-                  node.vx += distDx * force * 0.5;
-                  node.vy += distDy * force * 0.5;
-              }
-          });
-
-          if (node.fatherId) {
-             const dad = nodesRef.current.find(n => n.id === node.fatherId);
-             if (dad) {
-                 const sx = dad.x - node.x;
-                 const sy = dad.y - node.y;
-                 node.vx += sx * 0.05;
-                 node.vy += sy * 0.05;
-             }
-          }
-          if (node.motherId) {
-             const mom = nodesRef.current.find(n => n.id === node.motherId);
-             if (mom) {
-                 const sx = mom.x - node.x;
-                 const sy = mom.y - node.y;
-                 node.vx += sx * 0.02;
-                 node.vy += sy * 0.02;
-             }
-          }
-
-          node.vx *= 0.9;
-          node.vy *= 0.9;
-          node.x += node.vx;
-          node.y += node.vy;
-      });
-
-      nodesRef.current.forEach(node => {
-          if (node.fatherId) {
-              const dad = nodesRef.current.find(n => n.id === node.fatherId);
-              if (dad) {
-                  ctx.beginPath();
-                  ctx.moveTo(node.x, node.y);
-                  ctx.lineTo(dad.x, dad.y);
-                  ctx.strokeStyle = GOTRA_COLORS[node.birthGotra];
-                  ctx.lineWidth = 1;
-                  ctx.globalAlpha = 0.3;
-                  ctx.stroke();
-              }
-          }
-          if (node.motherId) {
-            const mom = nodesRef.current.find(n => n.id === node.motherId);
-            if (mom) {
-                ctx.beginPath();
-                ctx.moveTo(node.x, node.y);
-                ctx.lineTo(mom.x, mom.y);
-                ctx.strokeStyle = '#fff'; 
-                ctx.setLineDash([2, 4]);
-                ctx.lineWidth = 0.5;
-                ctx.globalAlpha = 0.2;
-                ctx.stroke();
-                ctx.setLineDash([]);
-            }
-          }
-      });
-
-      nodesRef.current.forEach(node => {
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-          ctx.fillStyle = GOTRA_COLORS[node.birthGotra];
-          ctx.globalAlpha = 1;
-          ctx.fill();
-          
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, node.radius * 2, 0, Math.PI * 2);
-          ctx.fillStyle = GOTRA_COLORS[node.birthGotra];
-          ctx.globalAlpha = 0.15;
-          ctx.fill();
-      });
-
-      animationFrameId = requestAnimationFrame(render);
-    };
-
-    render();
-    return () => cancelAnimationFrame(animationFrameId);
-  }, []);
 
   // --- Handlers ---
 
   const handleSelectFather = (p) => {
     setFather(p);
     
+    // Check if father has a spouse first
+    if (p.spouseId) {
+      const wife = safeDatabase.find(w => w.id === p.spouseId);
+      
+      if (wife) {
+        // Father has a wife - skip to children step
+        setExistingMother(wife);
+        setMotherName(wife.name);
+        setMotherMaidenGotra(wife.birthGotra);
+        
+        // Get existing children
+        const kids = safeDatabase.filter(child => child.fatherId === p.id);
+        setExistingChildren(kids);
+        
+        setStep('add-children');
+        return;
+      }
+    }
+    
+    // No spouse - check if there are children (old logic for finding mother via children)
     const kids = safeDatabase.filter(child => child.fatherId === p.id);
     
     if (kids.length > 0) {
@@ -1091,8 +1060,7 @@ export default function LineageBuilder({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] w-full h-screen overflow-hidden bg-slate-900 font-sans">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block" />
+    <div className="fixed inset-0 z-[100] w-full h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 font-sans">
       
       {/* Close Button */}
       <button 
@@ -1116,7 +1084,32 @@ export default function LineageBuilder({ onClose }) {
         <div className="pointer-events-auto w-full max-w-md">
             {step === 'find-father' && selectedGotra && <FindFatherStep database={safeDatabase} selectedGotra={selectedGotra} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onSelectFather={handleSelectFather} onCreateFather={handleCreateFather} onChangeHead={handleChangeHead} onBack={onClose} />}
             {step === 'link-father' && <LinkFatherStep newFatherName={newFatherName} database={safeDatabase} selectedGotra={selectedGotra} onLink={handleLinkFather} onReverseLink={handleReverseLink} onSkip={handleSkipLink} onBack={() => setStep('find-father')} headToChange={headToChange} />}
-            {step === 'add-mother' && selectedGotra && <AddMotherStep father={father} motherName={motherName} setMotherName={setMotherName} motherMaidenGotra={motherMaidenGotra} setMotherMaidenGotra={setMotherMaidenGotra} selectedGotra={selectedGotra} onContinue={() => setStep('add-children')} gotraList={gotraList} onAddGotra={addNewGotra} />}
+            {step === 'add-mother' && selectedGotra && <AddMotherStep father={father} motherName={motherName} setMotherName={setMotherName} motherMaidenGotra={motherMaidenGotra} setMotherMaidenGotra={setMotherMaidenGotra} selectedGotra={selectedGotra} onContinue={() => {
+              // Check if there's an existing mother match
+              const match = safeDatabase.find(p => 
+                p.gender === 'female' &&
+                p.name.toLowerCase() === motherName.toLowerCase() &&
+                !p.spouseId // Not already married
+              );
+              
+              if (match) {
+                // Found existing person - link them as the mother
+                console.log('Using existing mother:', match);
+                setExistingMother(match);
+                // Update the existing person with spouse link and current gotra
+                updatePerson(match.id, {
+                  spouseId: father.id,
+                  currentGotra: selectedGotra
+                }).then(() => {
+                  // Also update father's spouse link
+                  updatePerson(father.id, { spouseId: match.id });
+                });
+              } else {
+                setExistingMother(null);
+              }
+              
+              setStep('add-children');
+            }} gotraList={gotraList} onAddGotra={addNewGotra} database={safeDatabase} />}
             {step === 'add-children' && selectedGotra && <AddChildrenStep father={father} motherName={motherName} existingChildren={existingChildren} childrenList={childrenList} onChildChange={(idx, f, v) => { const n = [...childrenList]; n[idx][f] = v; setChildrenList(n); }} onRemoveRow={(idx) => { const n=[...childrenList]; n.splice(idx,1); setChildrenList(n); }} onAddRow={() => setChildrenList([...childrenList, {name:'', gender: null}])} onSave={finishFlow} selectedGotra={selectedGotra} error={error} database={safeDatabase} />}
             {step === 'success' && selectedGotra && <SuccessStep motherName={motherName} father={father} displayedChildren={lastAddedChildren} selectedGotra={selectedGotra} motherMaidenGotra={motherMaidenGotra} onReset={resetFlow} onContinueAsChild={continueAsChild} database={safeDatabase} />}
         </div>

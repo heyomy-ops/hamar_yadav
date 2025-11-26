@@ -148,9 +148,10 @@ import LineageBuilder from './components/LineageBuilder';
 import TreeNode from './components/TreeNode';
 import LoginPage from './components/LoginPage';
 import Onboarding from './components/Onboarding';
+import ProfilePage from './components/ProfilePage';
 
 // --- Sidebar Component ---
-const Sidebar = ({ isOpen, onClose, activeView, onViewChange, isAdminMode, onAdminToggle, user, onLogin, onLogout }) => (
+const Sidebar = ({ isOpen, onClose, activeView, onViewChange, isAdminMode, onAdminToggle, user, onLogin, onLogout, selectedGotra }) => (
   <AnimatePresence>
     {isOpen && (
       <>
@@ -227,7 +228,10 @@ const Sidebar = ({ isOpen, onClose, activeView, onViewChange, isAdminMode, onAdm
             </button>
 
             <button
-              onClick={() => { onViewChange('builder'); onClose(); }}
+              onClick={() => {
+                onViewChange('builder');
+                onClose();
+              }}
               className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
                 activeView === 'builder' 
                   ? 'bg-rose-50 text-rose-600 shadow-sm border border-rose-100' 
@@ -240,6 +244,26 @@ const Sidebar = ({ isOpen, onClose, activeView, onViewChange, isAdminMode, onAdm
               <div className="text-left">
                 <div className="font-bold text-sm">Gotra Map</div>
                 <div className="text-xs opacity-70">Lineage Builder</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                onViewChange('profile');
+                onClose();
+              }}
+              className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                activeView === 'profile' 
+                  ? 'bg-purple-50 text-purple-600 shadow-sm border border-purple-100' 
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <div className={`p-2 rounded-lg ${activeView === 'profile' ? 'bg-purple-100' : 'bg-slate-100'}`}>
+                <User size={20} />
+              </div>
+              <div className="text-left">
+                <div className="font-bold text-sm">My Profile</div>
+                <div className="text-xs opacity-70">View your details</div>
               </div>
             </button>
           </div>
@@ -454,7 +478,8 @@ function AppContent() {
       setPassword('');
       setPasswordError('');
       setIsSidebarOpen(false);
-    } else {
+    }
+    else {
       setPasswordError('Incorrect password. Try again.');
       setPassword('');
     }
@@ -484,6 +509,7 @@ function AppContent() {
         user={user}
         onLogin={loginWithGoogle}
         onLogout={logout}
+        selectedGotra={selectedGotra}
       />
 
       {/* Lineage Builder View */}
@@ -496,6 +522,20 @@ function AppContent() {
             className="fixed inset-0 z-40 bg-slate-900"
           >
             <LineageBuilder onClose={() => setActiveView('tree')} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Profile View */}
+      <AnimatePresence mode="wait">
+        {activeView === 'profile' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed inset-0 z-40 bg-slate-900"
+          >
+            <ProfilePage onClose={() => setActiveView('tree')} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -652,19 +692,15 @@ function AppContent() {
             ) : (
               <div className="flex flex-col items-center justify-center text-center p-6 md:p-10 bg-white/50 backdrop-blur-sm rounded-2xl md:rounded-3xl border border-white/60 shadow-xl max-w-sm mx-auto">
                 <div className="w-16 h-16 md:w-20 md:h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-4 md:mb-6 text-indigo-600">
-                   <Activity size={32} className="md:hidden" />
-                   <Activity size={40} className="hidden md:block" />
+                   <Layout size={32} className="md:hidden" />
+                   <Layout size={40} className="hidden md:block" />
                 </div>
-                <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-2">Start Your Lineage</h2>
-                <p className="text-sm md:text-base text-slate-500 max-w-xs mb-6 md:mb-8 px-2">Your family tree is currently empty. Use the Gotra Map to add the first member.</p>
-                <button 
-                  onClick={() => setActiveView('builder')}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 md:px-8 md:py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 text-sm md:text-base w-full md:w-auto justify-center"
-                >
-                  <Plus size={18} className="md:hidden" />
-                  <Plus size={20} className="hidden md:block" />
-                  Open Gotra Map
-                </button>
+                <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-2">Select Your Gotra</h2>
+                <p className="text-sm md:text-base text-slate-500 max-w-xs mb-6 md:mb-8 px-2">Choose a Gotra from the top-left dropdown to view its family tree.</p>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <span>👆</span>
+                  <span>Click the Gotra selector above</span>
+                </div>
               </div>
             )}
           </div>

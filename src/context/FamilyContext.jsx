@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { GOTRA_LIST } from '../constants/gotras';
-import { auth, googleProvider, db } from '../firebase';
+import { auth, googleProvider, db, storage } from '../firebase';
 import { 
   signInWithPopup, 
   signOut, 
@@ -16,8 +16,15 @@ import {
   doc, 
   query, 
   orderBy,
-  writeBatch
+  writeBatch,
+  getDocs
 } from 'firebase/firestore';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL,
+  deleteObject
+} from 'firebase/storage';
 
 const FamilyContext = createContext();
 
@@ -83,26 +90,24 @@ export const FamilyProvider = ({ children }) => {
     return () => unsubscribeGotras();
   }, []);
 
-  // Register User Function
-  const registerUser = async (name, gotra) => {
+  // Register User Profile (after onboarding)
+  const registerUser = async (name, gotra, linkedPersonId = null) => {
     if (!user) return;
+    
     try {
       // 1. Save User Profile
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
-        displayName: name,
         email: user.email,
+        name: name,
         gotra: gotra,
-        createdAt: new Date()
+        linkedPersonId: linkedPersonId,
+        hasCompletedOnboarding: true,
+        createdAt: new Date().toISOString()
       });
 
       // 2. Save Gotra if it's new (check if in static list or current list)
       if (!GOTRA_LIST.includes(gotra)) {
-        // Check if already in DB to avoid duplicates (though Set handles it in UI)
-        // Ideally we check DB, but for now we just try to add if it doesn't exist
-        // We can use setDoc with merge or just addDoc. 
-        // Let's use a specific ID for gotra to avoid dups if we want, or just addDoc.
-        // Simple approach: Add to 'gotras' collection.
         await addDoc(collection(db, 'gotras'), { name: gotra });
       }
     } catch (error) {
@@ -132,14 +137,27 @@ export const FamilyProvider = ({ children }) => {
     if (!gotraName) return;
     
     try {
-      // Find the gotra document in Firestore
-      const q = query(collection(db, 'gotras'), orderBy('name'));
-      const snapshot = await new Promise((resolve) => {
-        const unsubscribe = onSnapshot(q, (snap) => {
-          unsubscribe();
-          resolve(snap);
-        });
+      // 1. Check if Gotra has any members
+      const peopleSnapshot = await getDocs(collection(db, 'people'));
+      const blockingPeople = peopleSnapshot.docs.filter(doc => {
+        const data = doc.data();
+        return data.birthGotra === gotraName || data.currentGotra === gotraName;
+      }).map(doc => {
+        const data = doc.data();
+        const field = data.birthGotra === gotraName ? 'birthGotra' : 'currentGotra';
+        return `${data.name} (${field})`;
       });
+      
+      // 2. Block deletion if members exist
+      if (blockingPeople.length > 0) {
+        const peopleList = blockingPeople.join('\n• ');
+        alert(`Cannot delete "${gotraName}".\n\nIt has ${blockingPeople.length} member(s):\n• ${peopleList}\n\nPlease delete all members first or check for orphaned data in Firestore.`);
+        return;
+      }
+      
+      // 3. Query Firestore for the gotra document
+      const q = query(collection(db, 'gotras'), orderBy('name'));
+      const snapshot = await getDocs(q);
       
       const gotraDoc = snapshot.docs.find(doc => doc.data().name === gotraName);
       if (gotraDoc) {
@@ -229,27 +247,74 @@ export const FamilyProvider = ({ children }) => {
 
   // Delete person from database (Admin only)
   const deletePerson = async (personId) => {
+    if (!personId) return;
+    
     try {
-      // 1. Delete the person
-      await deleteDoc(doc(db, 'people', personId));
+      // 1. Get all people to find relationships
+      const peopleSnapshot = await getDocs(collection(db, 'people'));
+      const allPeople = peopleSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // 2. Clean up references in other documents
-      // Note: In a production app, this should be a Cloud Function or a batch update.
-      // For simplicity here, we'll iterate and update.
+      const personToDelete = allPeople.find(p => p.id === personId);
+      if (!personToDelete) return;
+      
+      // 2. Find all descendants recursively
+      const findDescendants = (pid, people) => {
+        const descendants = [];
+        const children = people.filter(p => p.fatherId === pid || p.motherId === pid);
+        children.forEach(child => {
+          descendants.push(child);
+          descendants.push(...findDescendants(child.id, people));
+        });
+        return descendants;
+      };
+      
+      const descendants = findDescendants(personId, allPeople);
+      let toDelete = [personId, ...descendants.map(d => d.id)];
+      
+      // 3. If deleting a MALE, also delete his spouse (wife)
+      if (personToDelete.gender === 'male' && personToDelete.spouseId) {
+        const spouse = allPeople.find(p => p.id === personToDelete.spouseId);
+        if (spouse) {
+          toDelete.push(spouse.id);
+        }
+      }
+      
+      // 4. Show warning if deleting 3+ people
+      if (toDelete.length >= 3) {
+        const confirmMsg = `⚠️ WARNING: Deleting this person will also delete ${toDelete.length - 1} other(s) including spouse and descendants.\n\nTotal people to be deleted: ${toDelete.length}\n\nThis action cannot be undone. Continue?`;
+        if (!confirm(confirmMsg)) {
+          return; // User cancelled
+        }
+      }
+      
+      // 5. Delete all in batch
       const batch = writeBatch(db);
+      toDelete.forEach(id => {
+        batch.delete(doc(db, 'people', id));
+      });
       
-      database.forEach(p => {
-        if (p.id === personId) return; // Skip self (already deleted)
+      // 6. Clean up references from remaining people
+      allPeople.forEach(person => {
+        if (toDelete.includes(person.id)) return; // Skip deleted people
         
         let needsUpdate = false;
         const updates = {};
 
-        if (p.fatherId === personId) { updates.fatherId = null; needsUpdate = true; }
-        if (p.motherId === personId) { updates.motherId = null; needsUpdate = true; }
-        if (p.spouseId === personId) { updates.spouseId = null; needsUpdate = true; }
+        if (toDelete.includes(person.fatherId)) { 
+          updates.fatherId = null; 
+          needsUpdate = true; 
+        }
+        if (toDelete.includes(person.motherId)) { 
+          updates.motherId = null; 
+          needsUpdate = true; 
+        }
+        if (toDelete.includes(person.spouseId)) { 
+          updates.spouseId = null; 
+          needsUpdate = true; 
+        }
 
         if (needsUpdate) {
-          const ref = doc(db, 'people', p.id);
+          const ref = doc(db, 'people', person.id);
           batch.update(ref, updates);
         }
       });
@@ -259,6 +324,41 @@ export const FamilyProvider = ({ children }) => {
     } catch (error) {
       console.error("Error deleting person:", error);
       alert("Failed to delete person.");
+    }
+  };
+
+  // Upload Profile Photo
+  const uploadProfilePhoto = async (file, personId) => {
+    try {
+      const storageRef = ref(storage, `profile-photos/${personId}.jpg`);
+      await uploadBytes(storageRef, file);
+      const photoURL = await getDownloadURL(storageRef);
+      
+      // Update person document with photo URL
+      await updateDoc(doc(db, 'people', personId), {
+        photoURL: photoURL
+      });
+      
+      return photoURL;
+    } catch (error) {
+      console.error("Error uploading photo:", error);
+      throw error;
+    }
+  };
+
+  // Delete Profile Photo
+  const deleteProfilePhoto = async (personId) => {
+    try {
+      const storageRef = ref(storage, `profile-photos/${personId}.jpg`);
+      await deleteObject(storageRef);
+      
+      // Remove photo URL from person document
+      await updateDoc(doc(db, 'people', personId), {
+        photoURL: null
+      });
+    } catch (error) {
+      console.error("Error deleting photo:", error);
+      throw error;
     }
   };
 
@@ -324,14 +424,15 @@ export const FamilyProvider = ({ children }) => {
       return {
         id: person.id,
         name: person.name,
-        role: person.generation === 1 ? 'Head of Family' : (person.gender === 'male' ? 'Son' : 'Daughter'),
-        gender: person.gender, // Pass gender
+        role: `Generation ${person.generation || '?'}`,
+        gender: person.gender,
         dob: person.dob, // Pass DOB
         years: 'Present', // Placeholder
         color: person.gender === 'male' ? 'bg-blue-500' : 'bg-rose-500',
         // If daughter of lineage, show birthGotra (Besra). Otherwise show currentGotra (Ghonsi)
         tags: [isDaughterOfLineage ? person.birthGotra : (person.currentGotra || 'Unknown'), person.gender === 'male' ? 'Male' : 'Female'],
         partner: partner,
+        photoURL: person.photoURL || null, // Add photo URL
         children: children
       };
     };
@@ -370,7 +471,9 @@ export const FamilyProvider = ({ children }) => {
       addNewGotra,
       deleteGotra,
       loginWithGoogle,
-      logout
+      logout,
+      uploadProfilePhoto,
+      deleteProfilePhoto,
     }}>
       {children}
     </FamilyContext.Provider>

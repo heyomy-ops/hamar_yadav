@@ -23,7 +23,7 @@ const Tag = ({ text, onClick }) => (
   </span>
 );
 
-const ProfileBlock = ({ name, role, tags, color, align = 'left', onTagClick, personId, dob, gender, isAdminMode, isHighlighted }) => {
+const ProfileBlock = ({ name, role, tags, color, align = 'left', onTagClick, personId, dob, gender, photoURL, isAdminMode, isHighlighted }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editDob, setEditDob] = useState(dob || '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -78,8 +78,12 @@ const ProfileBlock = ({ name, role, tags, color, align = 'left', onTagClick, per
       {/* Avatar and Name/Role Row */}
       <div className={`flex items-center gap-3 ${align === 'right' ? 'flex-row-reverse' : 'flex-row'}`}>
         {/* Avatar */}
-        <div className={`w-12 h-12 rounded-full ${color} flex items-center justify-center text-white font-bold text-base shadow-sm`}>
-          <User size={20} />
+        <div className={`w-12 h-12 rounded-full ${!photoURL ? color : 'bg-slate-200'} flex items-center justify-center text-white font-bold text-base shadow-sm overflow-hidden`}>
+          {photoURL ? (
+            <img src={photoURL} alt={name} className="w-full h-full object-cover" />
+          ) : (
+            <User size={20} />
+          )}
         </div>
 
         {/* Name & Role */}
@@ -91,13 +95,17 @@ const ProfileBlock = ({ name, role, tags, color, align = 'left', onTagClick, per
 
       {/* Tags + Age (only if age is set) */}
       <div className="flex flex-row gap-1.5">
-        {tags && tags.slice(0, 2).map(t => (
-          <Tag 
-             key={t} 
-             text={t} 
-             onClick={gotraList && gotraList.includes(t) ? () => onTagClick(t, personId) : undefined} 
-          />
-        ))}
+        {tags && tags.slice(0, 2).map(t => {
+          // Make tag clickable if it's a Gotra (not "Male"/"Female")
+          const isGotraTag = t !== 'Male' && t !== 'Female';
+          return (
+            <Tag 
+               key={t} 
+               text={t} 
+               onClick={isGotraTag && onTagClick ? () => onTagClick(t, personId) : undefined} 
+            />
+          );
+        })}
         
         {/* Age Tag - only shows when age is set */}
         {personId && age !== null && (
@@ -500,6 +508,7 @@ const NodeCard = ({ node, toggleExpand, isExpanded, hasChildren, onTagClick, isA
                 personId={node.id}
                 dob={node.dob}
                 gender={node.gender}
+                photoURL={node.photoURL}
                 onTagClick={onTagClick}
                 isAdminMode={isAdminMode}
             />
@@ -532,6 +541,7 @@ const NodeCard = ({ node, toggleExpand, isExpanded, hasChildren, onTagClick, isA
                     personId={node.partner.id}
                     dob={node.partner.dob}
                     gender={node.partner.gender}
+                    photoURL={node.partner.photoURL}
                     align="right"
                     onTagClick={onTagClick}
                     isAdminMode={isAdminMode}

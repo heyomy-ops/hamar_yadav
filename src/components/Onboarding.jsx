@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useFamily } from '../context/FamilyContext';
-import { User, Users, ArrowRight, Check } from 'lucide-react';
+import { User, Users, ArrowRight, Check, CheckCircle2 } from 'lucide-react';
 import { capitalizeName } from '../utils/textUtils';
+import { updateDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export default function Onboarding() {
-  const { user, gotraList, registerUser } = useFamily();
-  const [step, setStep] = useState(1);
-  const [name, setName] = useState(user?.displayName || '');
+  const { user, gotraList, registerUser, database } = useFamily();
+  const [step, setStep] = useState(1); // 1: Gotra, 2: Name, 3: Auto-match
   const [selectedGotra, setSelectedGotra] = useState('');
+  const [name, setName] = useState(user?.displayName || '');
   const [searchQuery, setSearchQuery] = useState('');
+  const [matches, setMatches] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -20,24 +23,62 @@ export default function Onboarding() {
     g.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleNext = () => {
-    if (step === 1 && name.trim()) setStep(2);
+  const handleGotraNext = () => {
+    if (selectedGotra || searchQuery.trim()) {
+      const gotra = selectedGotra || searchQuery.trim();
+      setSelectedGotra(gotra);
+      setStep(2);
+    }
   };
 
-  const handleFinish = async () => {
-    if (!selectedGotra && !searchQuery) return;
+  const handleNameNext = () => {
+    if (!name.trim()) return;
     
-    // Use selected gotra or the custom one typed in search
-    const gotraToSave = selectedGotra || searchQuery;
+    // Search for matches in selected Gotra
+    const gotraMatches = database.filter(p => 
+      p.birthGotra === selectedGotra &&
+      p.name.toLowerCase() === name.trim().toLowerCase()
+    );
     
+    if (gotraMatches.length > 0) {
+      setMatches(gotraMatches);
+      setStep(3);
+    } else {
+      // No matches, just register
+      handleFinish(null);
+    }
+  };
+
+  const handleSelectMatch = async (personId) => {
     setIsSubmitting(true);
     try {
-      await registerUser(name, gotraToSave);
-      // Context will update isOnboarding to false automatically
+      // Link this person to user account
+      await updateDoc(doc(db, 'people', personId), {
+        linkedUserId: user.uid
+      });
+      
+      // Register user with link
+      await registerUser(name, selectedGotra, personId);
+    } catch (error) {
+      console.error("Failed to link:", error);
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleFinish = async (linkedPersonId = null) => {
+    setIsSubmitting(true);
+    try {
+      await registerUser(name, selectedGotra, linkedPersonId);
     } catch (error) {
       console.error("Failed to register:", error);
       setIsSubmitting(false);
     }
+  };
+
+  const getFatherName = (person) => {
+    if (!person.fatherId) return null;
+    const father = database.find(p => p.id === person.fatherId);
+    return father ? father.name : null;
   };
 
   return (
@@ -49,98 +90,181 @@ export default function Onboarding() {
       </div>
 
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="relative z-10 bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-slate-100 max-w-lg w-full"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative z-10 bg-white rounded-3xl shadow-2xl p-8 md:p-12 w-full max-w-md border border-slate-100"
       >
-        {/* Progress Bar */}
-        <div className="flex gap-2 mb-8">
-          <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 1 ? 'bg-indigo-600' : 'bg-slate-100'}`} />
-          <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 2 ? 'bg-indigo-600' : 'bg-slate-100'}`} />
+        <div className="text-center mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-800 mb-2">Welcome! 🎉</h1>
+          <p className="text-slate-500">Let's set up your profile</p>
         </div>
 
-        {step === 1 ? (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-indigo-100 rounded-2xl mx-auto flex items-center justify-center text-indigo-600 mb-4">
-                <User size={32} />
-              </div>
-              <h1 className="text-2xl font-bold text-slate-800">What should we call you?</h1>
-              <p className="text-slate-500">Confirm your name to get started.</p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Full Name</label>
-              <input 
-                type="text" 
-                value={name}
-                onChange={(e) => setName(capitalizeName(e.target.value))}
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                placeholder="Enter your name"
-              />
-            </div>
-
-            <button 
-              onClick={handleNext}
-              disabled={!name.trim()}
-              className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-            >
-              Next Step <ArrowRight size={20} />
-            </button>
+        {/* Progress Steps */}
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
+            {step > 1 ? <Check size={16} /> : '1'}
           </div>
-        ) : (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-rose-100 rounded-2xl mx-auto flex items-center justify-center text-rose-600 mb-4">
-                <Users size={32} />
-              </div>
-              <h1 className="text-2xl font-bold text-slate-800">Select your Gotra</h1>
-              <p className="text-slate-500">Find your lineage or add a new one.</p>
-            </div>
-
-            <div className="relative">
-               <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={(e) => { setSearchQuery(capitalizeName(e.target.value)); setSelectedGotra(''); }}
-                  placeholder="Search or add Gotra..."
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-rose-500 outline-none transition-all mb-4"
-                  autoFocus
-               />
-               
-               <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2">
-                 {filteredGotras.map(g => (
-                   <button 
-                     key={g}
-                     onClick={() => { setSelectedGotra(g); setSearchQuery(g); }}
-                     className={`w-full text-left p-3 rounded-lg font-semibold transition-colors flex items-center justify-between ${selectedGotra === g ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'hover:bg-slate-50 text-slate-600'}`}
-                   >
-                     {g}
-                     {selectedGotra === g && <Check size={16} />}
-                   </button>
-                 ))}
-                 
-                 {searchQuery && !filteredGotras.includes(searchQuery) && (
-                    <button 
-                      onClick={() => { setSelectedGotra(searchQuery); }}
-                      className={`w-full text-left p-3 rounded-lg font-semibold transition-colors flex items-center gap-2 text-indigo-600 bg-indigo-50 border border-indigo-100 border-dashed`}
-                    >
-                      <span className="w-5 h-5 rounded-full bg-indigo-200 flex items-center justify-center text-xs">+</span>
-                      Add "{searchQuery}" as new Gotra
-                    </button>
-                 )}
-               </div>
-            </div>
-
-            <button 
-              onClick={handleFinish}
-              disabled={(!selectedGotra && !searchQuery) || isSubmitting}
-              className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-            >
-              {isSubmitting ? 'Setting up...' : 'Finish Setup'}
-            </button>
+          <div className={`h-1 w-12 ${step >= 2 ? 'bg-indigo-600' : 'bg-slate-200'}`}></div>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
+            {step > 2 ? <Check size={16} /> : '2'}
           </div>
-        )}
+        </div>
+
+        <AnimatePresence mode="wait">
+          {/* Step 1: Select Gotra */}
+          {step === 1 && (
+            <motion.div
+              key="gotra"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+            >
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
+                    <Users className="inline mr-2" size={16} />
+                    Select Your Gotra
+                  </label>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search or type new Gotra..."
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                    autoFocus
+                  />
+                </div>
+
+                {filteredGotras.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl">
+                    {filteredGotras.map(g => (
+                      <button
+                        key={g}
+                        onClick={() => {
+                          setSelectedGotra(g);
+                          setSearchQuery('');
+                        }}
+                        className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${selectedGotra === g ? 'bg-indigo-50 text-indigo-700 font-bold' : ''}`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedGotra && (
+                  <div className="bg-indigo-50 p-3 rounded-xl">
+                    <p className="text-sm text-indigo-700">
+                      Selected: <strong>{selectedGotra}</strong>
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleGotraNext}
+                  disabled={!selectedGotra && !searchQuery.trim()}
+                  className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  Next <ArrowRight size={18} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 2: Enter Name */}
+          {step === 2 && (
+            <motion.div
+              key="name"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+            >
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
+                    <User className="inline mr-2" size={16} />
+                    Your Full Name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(capitalizeName(e.target.value))}
+                    placeholder="Enter your name..."
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setStep(1)}
+                    className="px-4 py-3 border border-slate-300 rounded-xl hover:bg-slate-50"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={handleNameNext}
+                    disabled={!name.trim() || isSubmitting}
+                    className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting ? 'Searching...' : 'Next'} <ArrowRight size={18} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 3: Select Match */}
+          {step === 3 && (
+            <motion.div
+              key="match"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+            >
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 mb-2">Is this you?</h3>
+                  <p className="text-sm text-slate-500 mb-4">We found {matches.length} person(s) with your name. Select the one that's you:</p>
+                </div>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {matches.map(person => {
+                    const fatherName = getFatherName(person);
+                    return (
+                      <button
+                        key={person.id}
+                        onClick={() => handleSelectMatch(person.id)}
+                        disabled={isSubmitting}
+                        className="w-full p-4 border-2 border-slate-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left disabled:opacity-50"
+                      >
+                        <div className="flex items-start gap-3">
+                          <CheckCircle2 size={20} className="text-indigo-600 mt-1 flex-shrink-0" />
+                          <div>
+                            <p className="font-bold text-slate-800">{person.name}</p>
+                            {fatherName && (
+                              <p className="text-sm text-slate-500">Son of {fatherName}</p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-4 border-t border-slate-200">
+                  <button
+                    onClick={() => handleFinish(null)}
+                    disabled={isSubmitting}
+                    className="w-full py-3 text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                  >
+                    None of these are me
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );
